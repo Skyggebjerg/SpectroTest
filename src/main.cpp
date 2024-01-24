@@ -1,74 +1,154 @@
 #include <Arduino.h>
 
 /*
-*******************************************************************************
-* Copyright (c) 2021 by M5Stack
-*                  Equipped with M5StickC-Plus sample source code
-*                          配套  M5StickC-Plus 示例源代码
-* Visit for more information: https://docs.m5stack.com/en/core/m5stickc_plus
-* 获取更多资料请访问: https://docs.m5stack.com/zh_CN/core/m5stickc_plus
-*
-* Describe: I2C Scanner.  I2C探测
-* Date: 2021/9/18
-*******************************************************************************
-  This program scans the addresses 1-127 continuosly and shows the devices found
-on the TFT. 该程序连续扫描地址 1-127 并显示在外部(内部)I2C发现的设备。
+  Read the 18 channels of spectral light over I2C using the Spectral Triad
+  By: Nathan Seidle
+  SparkFun Electronics
+  Date: October 25th, 2018
+  License: MIT. See license file for more information but you can
+  basically do whatever you want with this code.
+
+  This example shows how to change the gain, mode, and LED drive currents
+  
+  Feel like supporting open source hardware?
+  Buy a board from SparkFun! https://www.sparkfun.com/products/15050
+
+  Hardware Connections:
+  Plug a Qwiic cable into the Spectral Triad and a BlackBoard
+  If you don't have a platform with a Qwiic connection use the SparkFun Qwiic Breadboard Jumper (https://www.sparkfun.com/products/14425)
+  Open the serial monitor at 115200 baud to see the output
 */
 #include <M5StickCPlus.h>
+#include "SparkFun_AS7265X.h" //Click here to get the library: http://librarymanager/All#SparkFun_AS7265X
+AS7265X sensor;
 
-void setup() {
-    M5.begin();
-    // For HY2.0-4P
-    Wire.begin(0,26);  // Init wire and join the I2C network.
-                   // 初始化wire，并且加入到I2C网络
-    // For HAT
-    //Wire1.begin(0,26);
-    // Wire.begin(21, 22); //Detect internal I2C, if this sentence is not added,
-    // it will detect external I2C.  检测内部I2C,若不加此句为检测外部I2C
-    M5.Lcd.setRotation(3);  // Rotate the screen.  旋转屏幕
-    M5.Lcd.setTextColor(
-        YELLOW);  // Set the font color to yellow.  设置字体颜色为黄色
-    M5.Lcd.println("M5StickC I2C Tester");  // Print a string on the screen.
-                                            // 在屏幕上打印字符串
+//#include <Wire.h>
+
+void setup()
+{
+  Wire.begin(0,26);
+  //Wire.setClock(100000);
+  Serial.begin(115200);
+  Serial.println("AS7265x Spectral Triad Example");
+
+  if (sensor.begin() == false)
+  {
+    Serial.println("Sensor does not appear to be connected. Please check wiring. Freezing...");
+    while (1)
+      ;
+  }
+
+  //Once the sensor is started we can increase the I2C speed
+  Wire.setClock(400000);
+
+  //There are four gain settings. It is possible to saturate the reading so don't simply jump to 64x.
+  //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+  sensor.setGain(AS7265X_GAIN_1X); //Default
+  //sensor.setGain(AS7265X_GAIN_37X); //This is 3.7x
+  //sensor.setGain(AS7265X_GAIN_16X);
+  //sensor.setGain(AS7265X_GAIN_64X);
+  //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+  //There are four measurement modes - the datasheet describes it best
+  //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+  //sensor.setMeasurementMode(AS7265X_MEASUREMENT_MODE_4CHAN); //Channels STUV on x51
+  //sensor.setMeasurementMode(AS7265X_MEASUREMENT_MODE_4CHAN_2); //Channels RTUW on x51
+  //sensor.setMeasurementMode(AS7265X_MEASUREMENT_MODE_6CHAN_CONTINUOUS); //All 6 channels on all devices
+  sensor.setMeasurementMode(AS7265X_MEASUREMENT_MODE_6CHAN_ONE_SHOT); //Default: All 6 channels, all devices, just once
+  //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+  //Integration cycles is from 0 (2.78ms) to 255 (711ms)
+  //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+  //sensor.setIntegrationCycles(49); //Default 50*2.8ms = 140ms per reading
+  sensor.setIntegrationCycles(1); //2*2.8ms = 5.6ms per reading
+  //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+  //Drive current can be set for each LED
+  //4 levels: 12.5, 25, 50, and 100mA
+  //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+  //White LED has max forward current of 120mA
+  sensor.setBulbCurrent(AS7265X_LED_CURRENT_LIMIT_12_5MA, AS7265x_LED_WHITE); //Default
+  //sensor.setBulbCurrent(AS7265X_LED_CURRENT_LIMIT_25MA, AS7265x_LED_WHITE); //Allowed
+  //sensor.setBulbCurrent(AS7265X_LED_CURRENT_LIMIT_50MA, AS7265x_LED_WHITE); //Allowed
+  //sensor.setBulbCurrent(AS7265X_LED_CURRENT_LIMIT_100MA, AS7265x_LED_WHITE); //Allowed
+
+  //UV LED has max forward current of 30mA so do not set the drive current higher
+  sensor.setBulbCurrent(AS7265X_LED_CURRENT_LIMIT_12_5MA, AS7265x_LED_UV); //Default
+  //sensor.setBulbCurrent(AS7265X_LED_CURRENT_LIMIT_25MA, AS7265x_LED_UV-bad); //Not allowed
+  //sensor.setBulbCurrent(AS7265X_LED_CURRENT_LIMIT_50MA, AS7265x_LED_UV-bad); //Not allowed
+  //sensor.setBulbCurrent(AS7265X_LED_CURRENT_LIMIT_100MA, AS7265x_LED_UV-bad); //Not allowed
+
+  //IR LED has max forward current of 65mA
+  sensor.setBulbCurrent(AS7265X_LED_CURRENT_LIMIT_12_5MA, AS7265x_LED_IR); //Default
+  //sensor.setBulbCurrent(AS7265X_LED_CURRENT_LIMIT_25MA, AS7265x_LED_IR); //Allowed
+  //sensor.setBulbCurrent(AS7265X_LED_CURRENT_LIMIT_50MA, AS7265x_LED_IR); //Allowed
+  //sensor.setBulbCurrent(AS7265X_LED_CURRENT_LIMIT_100MA, AS7265x_LED_IR-bad); //Not allowed
+  //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+  //The status indicator (Blue LED) can be enabled/disabled and have its current set
+  //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+  sensor.enableIndicator(); //Default
+  //sensor.disableIndicator();
+
+  //sensor.setIndicatorCurrent(AS7265X_INDICATOR_CURRENT_LIMIT_1MA);
+  //sensor.setIndicatorCurrent(AS7265X_INDICATOR_CURRENT_LIMIT_2MA);
+  //sensor.setIndicatorCurrent(AS7265X_INDICATOR_CURRENT_LIMIT_4MA);
+  sensor.setIndicatorCurrent(AS7265X_INDICATOR_CURRENT_LIMIT_8MA); //Default
+  //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+  //The interrupt pin is active low and can be enabled or disabled
+  //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+  sensor.enableInterrupt(); //Default
+  //sensor.disableInterrupt();
+  //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+  sensor.disableIndicator();
+
+  Serial.println("A,B,C,D,E,F,G,H,R,I,S,J,T,U,V,W,K,L");
 }
 
-int textColor = YELLOW;
+void loop()
+{
+  sensor.takeMeasurementsWithBulb(); //This is a hard wait while all 18 channels are measured
 
-void loop() {
-    int address;
-    int error;
-    int error1;
-    M5.Lcd.setCursor(0, 0);
-    M5.Lcd.println("scanning Address [HEX]");
+  Serial.print(sensor.getCalibratedA()); //410nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedB()); //435nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedC()); //460nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedD()); //485nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedE()); //510nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedF()); //535nm
+  Serial.print(",");
 
-    for (address = 1; address < 127; address++) {
-        Wire.beginTransmission(
-            address);  // Data transmission to the specified device address
-                       // starts.   开始向指定的设备地址进行传输数据
-        Wire1.beginTransmission(address);
-        error = Wire.endTransmission(); /*Stop data transmission with the slave.
-                  停止与从机的数据传输 0: success.  成功 1: The amount of data
-                  exceeds the transmission buffer capacity limit.
-                  数据量超过传送缓存容纳限制 return value:              2:
-                  Received NACK when sending address.  传送地址时收到 NACK 3:
-                  Received NACK when transmitting data.  传送数据时收到 NACK
-                                             4: Other errors.  其它错误 */
-        error1 = Wire1.endTransmission();
-        if ((error == 0) || (error1 == 0)) {
-            M5.Lcd.print(address, HEX);
-            M5.Lcd.print(" ");
-        } else
-            M5.Lcd.print(".");
+  Serial.print(sensor.getCalibratedG()); //560nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedH()); //585nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedR()); //610nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedI()); //645nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedS()); //680nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedJ()); //705nm
+  Serial.print(",");
 
-        delay(10);
-    }
+  Serial.print(sensor.getCalibratedT()); //730nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedU()); //760nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedV()); //810nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedW()); //860nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedK()); //900nm
+  Serial.print(",");
+  Serial.print(sensor.getCalibratedL()); //940nm
+  Serial.print(",");
 
-    if (textColor == YELLOW)
-        textColor = GREEN;
-    else
-        textColor = YELLOW;
-    M5.Lcd.setTextColor(textColor,
-                        BLACK);  // Set the foreground color of the text to
-                                 // textColor and the background color to BLACK.
-                                 // 设置文字的前景色为textColor背景色为BLACK
+  Serial.println();
 }
